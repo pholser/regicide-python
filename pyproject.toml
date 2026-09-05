@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "regicide"
+version = "0.1.0"
+description = "Model classes for Regicide (2nd edition)"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["regicide*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
