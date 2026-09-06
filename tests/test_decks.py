@@ -55,6 +55,27 @@ class TestTavernDeckBuild:
         drawn_second = [second.draw() for _ in range(second.size)]
         assert drawn_first == drawn_second
 
+    def test_number_ranks_are_assembled_in_a_fixed_order(self):
+        # Regression test: this used to iterate NUMBER_RANKS (a frozenset),
+        # whose order depends on Enum members' identity-based hash and so is
+        # NOT stable across process runs -- it silently broke --seed
+        # reproducibility for the CLI even though this exact test, run
+        # in-process against two same-seeded decks above, couldn't detect
+        # it (both builds shared the same frozenset object and its order).
+        from regicide.decks import _NUMBER_RANKS_IN_ORDER
+
+        assert _NUMBER_RANKS_IN_ORDER == (
+            Rank.TWO,
+            Rank.THREE,
+            Rank.FOUR,
+            Rank.FIVE,
+            Rank.SIX,
+            Rank.SEVEN,
+            Rank.EIGHT,
+            Rank.NINE,
+            Rank.TEN,
+        )
+
 
 class TestDiscardPile:
     def test_add_and_size(self):

@@ -4,6 +4,12 @@ import random
 from collections.abc import Iterable
 
 from regicide.cards import NUMBER_RANKS, Card, Rank, Suit
+
+# Plain Enum members hash by object identity, so iterating a *set* of them
+# (like NUMBER_RANKS) is not stable across process runs -- that would silently
+# break `--seed`-based reproducibility. Iterating the Rank class itself is
+# guaranteed to follow definition order, so build from that instead.
+_NUMBER_RANKS_IN_ORDER = tuple(rank for rank in Rank if rank in NUMBER_RANKS)
 from regicide.setup import jester_count
 
 
@@ -37,7 +43,7 @@ class TavernDeck:
 
     @classmethod
     def build(cls, num_players: int, rng: random.Random) -> TavernDeck:
-        cards = [Card(rank, suit) for rank in NUMBER_RANKS for suit in Suit]
+        cards = [Card(rank, suit) for rank in _NUMBER_RANKS_IN_ORDER for suit in Suit]
         cards += [Card.animal_companion(suit) for suit in Suit]
         cards += [Card.jester() for _ in range(jester_count(num_players))]
         rng.shuffle(cards)
