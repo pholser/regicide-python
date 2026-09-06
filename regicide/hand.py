@@ -48,6 +48,10 @@ class Hand:
     def is_empty(self) -> bool:
         return not self._cards
 
+    @property
+    def total_value(self) -> int:
+        return sum(card.value for card in self._cards)
+
     def add(self, card: Card) -> None:
         if self.is_full:
             raise HandFullError(f"hand already at max size ({self.max_size})")
@@ -58,6 +62,22 @@ class Hand:
             self._cards.remove(card)
         except ValueError:
             raise CardNotInHand(f"{card} is not in hand") from None
+
+    def remove_all(self, cards: Iterable[Card]) -> None:
+        """Remove every card in ``cards``, or none at all.
+
+        Validates that all of them are present before removing any, so a
+        bad request can't leave the hand missing only some of the cards.
+        """
+        cards = list(cards)
+        remaining = list(self._cards)
+        for card in cards:
+            try:
+                remaining.remove(card)
+            except ValueError:
+                raise CardNotInHand(f"{card} is not in hand") from None
+        for card in cards:
+            self._cards.remove(card)
 
     def __len__(self) -> int:
         return self.size

@@ -31,6 +31,10 @@ class TavernDeck:
         """Place cards facedown on the bottom of the deck (the Hearts power)."""
         self._cards.extend(cards)
 
+    def place_on_top(self, cards: Iterable[Card]) -> None:
+        """Place cards facedown on top of the deck (an exactly-defeated enemy)."""
+        self._cards[0:0] = list(cards)
+
     @classmethod
     def build(cls, num_players: int, rng: random.Random) -> TavernDeck:
         cards = [Card(rank, suit) for rank in NUMBER_RANKS for suit in Suit]
@@ -65,15 +69,18 @@ class DiscardPile:
         self._cards.extend(cards)
 
     def take_all(self) -> list[Card]:
-        """Remove and return every card, emptying the pile.
-
-        Used to implement the Hearts power: shuffle the returned cards,
-        peel off some to go under the Tavern deck, and add the remainder
-        back with ``add_all``.
-        """
+        """Remove and return every card, emptying the pile."""
         taken = self._cards
         self._cards = []
         return taken
+
+    def heal_into(self, tavern: TavernDeck, amount: int, rng: random.Random) -> None:
+        """The Hearts power: shuffle this pile, bury ``amount`` cards facedown
+        under the Tavern deck, and return the rest to this pile."""
+        pool = self.take_all()
+        rng.shuffle(pool)
+        tavern.place_under(pool[:amount])
+        self.add_all(pool[amount:])
 
 
 class CastleDeck:

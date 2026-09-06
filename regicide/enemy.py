@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from regicide.cards import Card, Rank, ROYAL_RANKS, Suit
+from regicide.play import CardPlay
 
 _ENEMY_STATS: dict[Rank, tuple[int, int]] = {
     # rank -> (attack, health)
@@ -54,3 +55,20 @@ class Enemy:
 
     def negate_immunity(self) -> None:
         self.immunity_negated = True
+
+    def resolve_play(self, play: CardPlay) -> bool:
+        """React to being attacked by ``play`` (Step 3, plus Spades' Step 4
+        shield since nothing observes it in between): apply a Spades shield,
+        double the damage for Clubs, take the damage, and report whether
+        that defeated this enemy. Suits this enemy is immune to are ignored,
+        matching that the raw attack value still counts toward damage.
+        """
+        if Suit.SPADES in play.active_suits and not self.is_suit_blocked(Suit.SPADES):
+            self.add_shield(play.total_attack_value)
+
+        amount = play.total_attack_value
+        if Suit.CLUBS in play.active_suits and not self.is_suit_blocked(Suit.CLUBS):
+            amount *= 2
+        self.take_damage(amount)
+
+        return self.is_defeated

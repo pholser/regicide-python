@@ -46,6 +46,21 @@ class TestRemove:
             hand.remove(THREE_CLUBS)
 
 
+class TestRemoveAll:
+    FOUR_SPADES = Card(Rank.FOUR, Suit.SPADES)
+
+    def test_removes_every_card(self):
+        hand = Hand(max_size=5, cards=[TWO_HEARTS, THREE_CLUBS, self.FOUR_SPADES])
+        hand.remove_all([TWO_HEARTS, self.FOUR_SPADES])
+        assert set(hand.cards) == {THREE_CLUBS}
+
+    def test_missing_card_raises_and_removes_nothing(self):
+        hand = Hand(max_size=5, cards=[TWO_HEARTS, THREE_CLUBS])
+        with pytest.raises(CardNotInHand):
+            hand.remove_all([TWO_HEARTS, self.FOUR_SPADES])
+        assert set(hand.cards) == {TWO_HEARTS, THREE_CLUBS}  # all-or-nothing
+
+
 class TestState:
     def test_is_empty(self):
         assert Hand(max_size=3).is_empty
@@ -68,3 +83,8 @@ class TestState:
         hand.add(THREE_CLUBS)
         assert snapshot == (TWO_HEARTS,)  # unaffected by later mutation
         assert isinstance(hand.cards, tuple)
+
+    def test_total_value(self):
+        assert Hand(max_size=5).total_value == 0
+        hand = Hand(max_size=5, cards=[TWO_HEARTS, THREE_CLUBS])
+        assert hand.total_value == 5
