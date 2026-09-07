@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from regicide.cards import Card, Rank, ROYAL_RANKS, Suit
 from regicide.play import CardPlay
 
@@ -9,6 +11,16 @@ _ENEMY_STATS: dict[Rank, tuple[int, int]] = {
     Rank.QUEEN: (15, 30),
     Rank.KING: (20, 40),
 }
+
+
+@dataclass(frozen=True)
+class AttackResult:
+    """What happened when an Enemy reacted to being attacked by a CardPlay."""
+
+    damage_dealt: int
+    doubled: bool
+    shield_added: int
+    defeated: bool
 
 
 class Enemy:
@@ -56,19 +68,27 @@ class Enemy:
     def negate_immunity(self) -> None:
         self.immunity_negated = True
 
-    def resolve_play(self, play: CardPlay) -> bool:
+    def resolve_play(self, play: CardPlay) -> AttackResult:
         """React to being attacked by ``play`` (Step 3, plus Spades' Step 4
         shield since nothing observes it in between): apply a Spades shield,
-        double the damage for Clubs, take the damage, and report whether
-        that defeated this enemy. Suits this enemy is immune to are ignored,
-        matching that the raw attack value still counts toward damage.
+        double the damage for Clubs, take the damage, and report what
+        happened. Suits this enemy is immune to are ignored, matching that
+        the raw attack value still counts toward damage.
         """
+        shield_added = 0
         if Suit.SPADES in play.active_suits and not self.is_suit_blocked(Suit.SPADES):
-            self.add_shield(play.total_attack_value)
+            shield_added = play.total_attack_value
+            self.add_shield(shield_added)
 
         amount = play.total_attack_value
-        if Suit.CLUBS in play.active_suits and not self.is_suit_blocked(Suit.CLUBS):
+        doubled = Suit.CLUBS in play.active_suits and not self.is_suit_blocked(Suit.CLUBS)
+        if doubled:
             amount *= 2
         self.take_damage(amount)
 
-        return self.is_defeated
+        return AttackResult(
+            damage_dealt=amount,
+            doubled=doubled,
+            shield_added=shield_added,
+            defeated=self.is_defeated,
+        )

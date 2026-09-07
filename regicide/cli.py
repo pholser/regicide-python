@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 from regicide.actions import YIELD, Action
 from regicide.cards import Card, Rank
+from regicide.enemy import Enemy
 from regicide.game_state import GameOutcome, GameState
 from regicide.hand import CardNotInHand
 from regicide.play import CardPlay, InvalidPlay
@@ -45,8 +46,9 @@ def describe_card(card: Card) -> str:
 
 
 class CLIDecisions:
-    """A Decisions implementation that prompts a human at the terminal.
-    In a multiplayer game every player shares this same terminal (hot-seat).
+    """A Decisions and TurnObserver implementation for a human at the
+    terminal. In a multiplayer game every player shares this same terminal
+    (hot-seat).
     """
 
     def choose_action(self, player: Player, state: GameState) -> Action:
@@ -105,6 +107,62 @@ class CLIDecisions:
             if index is None:
                 continue
             return state.players[index - 1]
+
+    # -- TurnObserver -----------------------------------------------------
+
+    def on_yield(self, player: Player) -> None:
+        print(f"\n{player.name} yields.")
+
+    def on_play(self, player: Player, play: CardPlay) -> None:
+        cards = ", ".join(describe_card(card) for card in play.cards)
+        print(f"\n{player.name} plays {cards} (attack value {play.total_attack_value}).")
+
+    def on_hearts(self, healed: int, blocked: bool) -> None:
+        if blocked:
+            print("Hearts power blocked: this enemy is immune.")
+        elif healed:
+            print(f"Healed {healed} card(s) from the discard pile back into the Tavern deck.")
+        else:
+            print("No cards in the discard pile to heal.")
+
+    def on_diamonds(self, drawn: int, blocked: bool) -> None:
+        if blocked:
+            print("Diamonds power blocked: this enemy is immune.")
+        elif drawn:
+            print(f"Drew {drawn} card(s) from the Tavern deck.")
+        else:
+            print("No cards could be drawn (Tavern deck empty or hands full).")
+
+    def on_damage_dealt(self, enemy: Enemy, amount: int, doubled: bool) -> None:
+        note = " (doubled by Clubs)" if doubled else ""
+        print(
+            f"Dealt {amount} damage{note} to {describe_card(enemy.card)}. "
+            f"{enemy.remaining_health}/{enemy.health} HP remaining."
+        )
+
+    def on_shield_added(self, enemy: Enemy, amount: int) -> None:
+        if amount:
+            print(f"Spades reduce this enemy's attack by {amount} (shield now {enemy.shield}).")
+        else:
+            print("Spades power blocked: this enemy is immune.")
+
+    def on_jester_negated_immunity(self, enemy: Enemy) -> None:
+        print(f"The Jester negates {describe_card(enemy.card)}'s immunity!")
+
+    def on_enemy_defeated(self, enemy: Enemy, exact: bool) -> None:
+        if exact:
+            print(f"{describe_card(enemy.card)} is defeated (exact kill)! It goes facedown atop the Tavern deck.")
+        else:
+            print(f"{describe_card(enemy.card)} is defeated!")
+
+    def on_enemy_revealed(self, enemy: Enemy) -> None:
+        print(f"A new enemy is revealed: {describe_card(enemy.card)} (HP {enemy.health}, Attack {enemy.attack}).")
+
+    def on_player_suffered(self, player: Player, amount: int, discarded: tuple[Card, ...]) -> None:
+        cards = ", ".join(describe_card(card) for card in discarded)
+        print(f"{player.name} discards {cards} to cover {amount} damage.")
+
+    # -- shared helpers -----------------------------------------------------
 
     def _print_status(self, state: GameState) -> None:
         enemy = state.enemy
@@ -179,7 +237,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     try:
         while not state.is_over:
-            state.play_turn(decisions, rng)
+            state.play_turn(decisions, rng, observer=decisions)
     except (IllegalAction, InvalidPlay, CardNotInHand, InsufficientDiscard) as error:
         print(f"\nInternal error, aborting: {error}")
         return

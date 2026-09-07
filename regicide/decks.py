@@ -80,13 +80,17 @@ class DiscardPile:
         self._cards = []
         return taken
 
-    def heal_into(self, tavern: TavernDeck, amount: int, rng: random.Random) -> None:
+    def heal_into(self, tavern: TavernDeck, amount: int, rng: random.Random) -> int:
         """The Hearts power: shuffle this pile, bury ``amount`` cards facedown
-        under the Tavern deck, and return the rest to this pile."""
+        under the Tavern deck, and return the rest to this pile. Returns the
+        number of cards actually buried (may be fewer than ``amount`` if this
+        pile didn't have that many)."""
         pool = self.take_all()
         rng.shuffle(pool)
-        tavern.place_under(pool[:amount])
+        to_bury = pool[:amount]
+        tavern.place_under(to_bury)
         self.add_all(pool[amount:])
+        return len(to_bury)
 
 
 class CastleDeck:

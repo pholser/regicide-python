@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from regicide.actions import Action
 from regicide.cards import Card
+from regicide.enemy import Enemy
+from regicide.play import CardPlay
 from regicide.player import Player
 
 
@@ -41,3 +43,41 @@ class ScriptedDecisions:
     def choose_next_player(self, chooser: Player, state: object) -> Player:
         assert self._next_players, "no scripted next-player left"
         return self._next_players.pop(0)
+
+
+class RecordingObserver:
+    """A TurnObserver that just records every call, as (method_name, args)
+    tuples, so a test can assert on exactly what was reported."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, tuple]] = []
+
+    def on_yield(self, player: Player) -> None:
+        self.events.append(("on_yield", (player,)))
+
+    def on_play(self, player: Player, play: CardPlay) -> None:
+        self.events.append(("on_play", (player, play)))
+
+    def on_hearts(self, healed: int, blocked: bool) -> None:
+        self.events.append(("on_hearts", (healed, blocked)))
+
+    def on_diamonds(self, drawn: int, blocked: bool) -> None:
+        self.events.append(("on_diamonds", (drawn, blocked)))
+
+    def on_damage_dealt(self, enemy: Enemy, amount: int, doubled: bool) -> None:
+        self.events.append(("on_damage_dealt", (enemy, amount, doubled)))
+
+    def on_shield_added(self, enemy: Enemy, amount: int) -> None:
+        self.events.append(("on_shield_added", (enemy, amount)))
+
+    def on_jester_negated_immunity(self, enemy: Enemy) -> None:
+        self.events.append(("on_jester_negated_immunity", (enemy,)))
+
+    def on_enemy_defeated(self, enemy: Enemy, exact: bool) -> None:
+        self.events.append(("on_enemy_defeated", (enemy, exact)))
+
+    def on_enemy_revealed(self, enemy: Enemy) -> None:
+        self.events.append(("on_enemy_revealed", (enemy,)))
+
+    def on_player_suffered(self, player: Player, amount: int, discarded: tuple[Card, ...]) -> None:
+        self.events.append(("on_player_suffered", (player, amount, discarded)))

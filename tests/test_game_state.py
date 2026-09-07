@@ -12,7 +12,7 @@ from regicide.play import CardPlay
 from regicide.player import Player
 from regicide.turn_order import IllegalAction
 
-from support import ScriptedDecisions
+from support import RecordingObserver, ScriptedDecisions
 
 
 def make_game(
@@ -276,3 +276,136 @@ class TestNewGame:
         second = GameState.new_game(3, random.Random(99))
         assert [p.hand.cards for p in first.players] == [p.hand.cards for p in second.players]
         assert first.enemy.card == second.enemy.card
+
+
+class TestObserverReporting:
+    def _find(self, observer: RecordingObserver, name: str):
+        return next(event for event in observer.events if event[0] == name)
+
+    def test_yield_and_suffering_are_reported(self):
+        state = make_game(
+            hands=[[Card(Rank.TEN, Suit.SPADES)], [Card(Rank.TWO, Suit.HEARTS)]],
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(YIELD)
+        decisions.script_discard([Card(Rank.TEN, Suit.SPADES)])
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        assert [name for name, _ in observer.events] == ["on_yield", "on_player_suffered"]
+        _, (yielder,) = observer.events[0]
+        assert yielder is state.players[0]
+        _, (sufferer, amount, discarded) = observer.events[1]
+        assert sufferer is state.players[0]
+        assert amount == 10
+        assert discarded == (Card(Rank.TEN, Suit.SPADES),)
+
+    def test_play_damage_and_shield_are_reported(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.HEARTS),
+            hands=[[Card(Rank.SEVEN, Suit.SPADES)]],
+            neutralize_attack=True,
+        )
+        decisions = ScriptedDecisions()
+        play = CardPlay.create(Card(Rank.SEVEN, Suit.SPADES))
+        decisions.script_action(play)
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        _, (player, reported_play) = self._find(observer, "on_play")
+        assert player is state.players[0]
+        assert reported_play is play
+
+        _, (enemy, amount, doubled) = self._find(observer, "on_damage_dealt")
+        assert amount == 7
+        assert not doubled
+
+        _, (enemy, shield_amount) = self._find(observer, "on_shield_added")
+        assert shield_amount == 7
+
+    def test_hearts_reports_healed_count_when_not_blocked(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.SPADES),
+            hands=[[Card(Rank.THREE, Suit.HEARTS)]],
+            discard=[Card(Rank.FOUR, Suit.SPADES), Card(Rank.FIVE, Suit.DIAMONDS)],
+            neutralize_attack=True,
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(CardPlay.create(Card(Rank.THREE, Suit.HEARTS)))
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        _, (healed, blocked) = self._find(observer, "on_hearts")
+        assert healed == 2
+        assert not blocked
+
+    def test_hearts_reports_blocked_by_immunity(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.HEARTS),
+            hands=[[Card(Rank.THREE, Suit.HEARTS)]],
+            discard=[Card(Rank.FOUR, Suit.SPADES)],
+            neutralize_attack=True,
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(CardPlay.create(Card(Rank.THREE, Suit.HEARTS)))
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        _, (healed, blocked) = self._find(observer, "on_hearts")
+        assert healed == 0
+        assert blocked
+
+    def test_diamonds_reports_actual_drawn_count(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.SPADES),
+            hands=[[Card(Rank.FOUR, Suit.DIAMONDS)]],
+            tavern=[Card(Rank.FIVE, Suit.HEARTS), Card(Rank.SIX, Suit.HEARTS)],
+            neutralize_attack=True,
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(CardPlay.create(Card(Rank.FOUR, Suit.DIAMONDS)))
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        _, (drawn, blocked) = self._find(observer, "on_diamonds")
+        assert drawn == 2  # only 2 cards were available, though 4 were requested
+        assert not blocked
+
+    def test_jester_reports_negated_immunity(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.CLUBS),
+            hands=[[Card.jester()], []],
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(CardPlay.create(Card.jester()))
+        decisions.script_next_player(state.players[1])
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        assert [name for name, _ in observer.events] == ["on_play", "on_jester_negated_immunity"]
+
+    def test_enemy_defeat_and_next_reveal_are_reported(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.DIAMONDS),
+            hands=[[Card(Rank.KING, Suit.CLUBS), Card(Rank.TWO, Suit.HEARTS)]],
+            castle=[Card(Rank.QUEEN, Suit.SPADES)],
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(CardPlay.create(Card(Rank.KING, Suit.CLUBS)))  # overkill: 40 dmg
+        decisions.script_action(YIELD)
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        _, (defeated_enemy, exact) = self._find(observer, "on_enemy_defeated")
+        assert defeated_enemy.card == Card(Rank.JACK, Suit.DIAMONDS)
+        assert not exact
+
+        _, (revealed_enemy,) = self._find(observer, "on_enemy_revealed")
+        assert revealed_enemy.card == Card(Rank.QUEEN, Suit.SPADES)

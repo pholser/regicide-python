@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from regicide.cards import Card
 from regicide.decks import DiscardPile, TavernDeck
-from regicide.enemy import Enemy
+from regicide.enemy import AttackResult, Enemy
 from regicide.play import CardPlay
 
 
@@ -24,9 +24,8 @@ class Encounter:
     def record_play(self, play: CardPlay) -> None:
         self.cards_in_play.extend(play.cards)
 
-    def resolve_play(self, play: CardPlay) -> bool:
-        """Record the play and let the enemy react to it (Step 3). Returns
-        whether the enemy is now defeated."""
+    def resolve_play(self, play: CardPlay) -> AttackResult:
+        """Record the play and let the enemy react to it (Step 3)."""
         self.record_play(play)
         return self.enemy.resolve_play(play)
 

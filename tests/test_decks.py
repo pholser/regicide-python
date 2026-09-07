@@ -95,6 +95,26 @@ class TestDiscardPile:
     def test_take_all_on_empty_pile_returns_empty_list(self):
         assert DiscardPile().take_all() == []
 
+    def test_heal_into_buries_amount_and_returns_remainder(self):
+        pile = DiscardPile([TWO_HEARTS, THREE_CLUBS, FOUR_SPADES])
+        tavern = TavernDeck()
+
+        healed = pile.heal_into(tavern, amount=2, rng=random.Random(0))
+
+        assert healed == 2
+        assert tavern.size == 2
+        assert pile.size == 1
+
+    def test_heal_into_caps_at_available_cards(self):
+        pile = DiscardPile([TWO_HEARTS])
+        tavern = TavernDeck()
+
+        healed = pile.heal_into(tavern, amount=5, rng=random.Random(0))
+
+        assert healed == 1
+        assert tavern.size == 1
+        assert pile.is_empty
+
 
 class TestCastleDeck:
     def test_build_orders_jacks_then_queens_then_kings(self):

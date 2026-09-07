@@ -10,6 +10,7 @@ from regicide.decks import CastleDeck, DiscardPile, TavernDeck
 from regicide.encounter import Encounter
 from regicide.enemy import Enemy
 from regicide.hand import Hand
+from regicide.observer import NULL_OBSERVER, TurnObserver
 from regicide.play import CardPlay
 from regicide.player import Player
 from regicide.setup import max_hand_size
@@ -92,18 +93,24 @@ class GameState:
 
         return cls(players, tavern, DiscardPile(), castle, enemy)
 
-    def apply_red_suit_powers(self, play: CardPlay, rng: random.Random) -> None:
+    def apply_red_suit_powers(
+        self, play: CardPlay, rng: random.Random, observer: TurnObserver = NULL_OBSERVER
+    ) -> None:
         """Hearts and Diamonds resolve immediately in Step 2 (Hearts first,
         when both are present). Clubs/Spades are handled by
         ``Enemy.resolve_play`` since their effect is entirely local to the
         enemy's own state (damage doubling, shield)."""
         amount = play.total_attack_value
-        if Suit.HEARTS in play.active_suits and not self.enemy.is_suit_blocked(Suit.HEARTS):
-            self.discard.heal_into(self.tavern, amount, rng)
-        if Suit.DIAMONDS in play.active_suits and not self.enemy.is_suit_blocked(Suit.DIAMONDS):
-            self.draw_for_diamonds(amount)
+        if Suit.HEARTS in play.active_suits:
+            blocked = self.enemy.is_suit_blocked(Suit.HEARTS)
+            healed = 0 if blocked else self.discard.heal_into(self.tavern, amount, rng)
+            observer.on_hearts(healed, blocked)
+        if Suit.DIAMONDS in play.active_suits:
+            blocked = self.enemy.is_suit_blocked(Suit.DIAMONDS)
+            drawn = 0 if blocked else self.draw_for_diamonds(amount)
+            observer.on_diamonds(drawn, blocked)
 
-    def draw_for_diamonds(self, amount: int) -> None:
+    def draw_for_diamonds(self, amount: int) -> int:
         order = self.turn_order.clockwise_from_current()
         remaining = amount
         made_progress = True
@@ -113,12 +120,13 @@ class GameState:
                 if remaining <= 0:
                     break
                 if self.tavern.is_empty:
-                    return
+                    return amount - remaining
                 if player.hand.is_full:
                     continue
                 player.hand.add(self.tavern.draw())
                 remaining -= 1
                 made_progress = True
+        return amount - remaining
 
     def resolve_enemy_defeat(self) -> None:
         self.encounter.defeat(self.tavern, self.discard)
@@ -128,7 +136,9 @@ class GameState:
         else:
             self.encounter = Encounter(Enemy(next_card))
 
-    def play_turn(self, decisions: Decisions, rng: random.Random) -> None:
+    def play_turn(
+        self, decisions: Decisions, rng: random.Random, observer: TurnObserver = NULL_OBSERVER
+    ) -> None:
         """Play one full turn (Steps 1-4).
 
         Loops rather than recurses when an enemy is defeated, since the
@@ -148,7 +158,8 @@ class GameState:
 
             if isinstance(action, Yield):
                 self.turn_order.yield_turn()
-                self.suffer_enemy_attack(decisions, player)
+                observer.on_yield(player)
+                self.suffer_enemy_attack(decisions, player, observer)
                 if self.outcome is GameOutcome.IN_PROGRESS:
                     self.turn_order.advance()
                 return
@@ -156,29 +167,40 @@ class GameState:
             play = action
             player.play(play)
             self.turn_order.mark_played()
+            observer.on_play(player, play)
 
             if play.is_jester:
                 self.encounter.negate_immunity()
+                observer.on_jester_negated_immunity(self.enemy)
                 self.encounter.record_play(play)
                 next_player = decisions.choose_next_player(player, self)
                 self.turn_order.set_current(next_player)
                 return
 
-            self.apply_red_suit_powers(play, rng)
-            defeated = self.encounter.resolve_play(play)
+            self.apply_red_suit_powers(play, rng, observer)
+            result = self.encounter.resolve_play(play)
+            observer.on_damage_dealt(self.enemy, result.damage_dealt, result.doubled)
+            if Suit.SPADES in play.active_suits:
+                observer.on_shield_added(self.enemy, result.shield_added)
 
-            if defeated:
+            if result.defeated:
+                exact = self.enemy.is_exactly_defeated
+                defeated_enemy = self.enemy
                 self.resolve_enemy_defeat()
+                observer.on_enemy_defeated(defeated_enemy, exact)
                 if self.is_over:
                     return
+                observer.on_enemy_revealed(self.enemy)
                 continue  # same player, new enemy, back to Step 1
 
-            self.suffer_enemy_attack(decisions, player)
+            self.suffer_enemy_attack(decisions, player, observer)
             if self.outcome is GameOutcome.IN_PROGRESS:
                 self.turn_order.advance()
             return
 
-    def suffer_enemy_attack(self, decisions: Decisions, player: Player) -> None:
+    def suffer_enemy_attack(
+        self, decisions: Decisions, player: Player, observer: TurnObserver = NULL_OBSERVER
+    ) -> None:
         amount = self.enemy.effective_attack
         if amount <= 0:
             return
@@ -188,3 +210,4 @@ class GameState:
         chosen = decisions.choose_discard(player, amount, self)
         discarded = player.discard(chosen, amount)
         self.discard.add_all(discarded)
+        observer.on_player_suffered(player, amount, discarded)

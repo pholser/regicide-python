@@ -24,17 +24,22 @@ class TestResolvePlay:
     def test_resolve_play_records_and_damages_enemy(self):
         encounter = make_encounter(rank=Rank.JACK, suit=Suit.HEARTS)
         play = CardPlay.create(Card(Rank.NINE, Suit.SPADES))
-        defeated = encounter.resolve_play(play)
-        assert not defeated
+        result = encounter.resolve_play(play)
+        assert not result.defeated
+        assert result.damage_dealt == 9
+        assert result.shield_added == 9
+        assert not result.doubled
         assert encounter.enemy.remaining_health == 11
         assert encounter.cards_in_play == [Card(Rank.NINE, Suit.SPADES)]
 
     def test_resolve_play_reports_defeat(self):
         encounter = make_encounter(rank=Rank.JACK, suit=Suit.HEARTS)
-        defeated = encounter.resolve_play(CardPlay.create(Card(Rank.TEN, Suit.SPADES)))
-        assert not defeated
-        defeated = encounter.resolve_play(CardPlay.create(Card(Rank.TEN, Suit.CLUBS)))
-        assert defeated
+        result = encounter.resolve_play(CardPlay.create(Card(Rank.TEN, Suit.SPADES)))
+        assert not result.defeated
+        result = encounter.resolve_play(CardPlay.create(Card(Rank.TEN, Suit.CLUBS)))
+        assert result.defeated
+        assert result.doubled
+        assert result.damage_dealt == 20
 
 
 class TestNegateImmunity:
