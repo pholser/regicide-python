@@ -10,7 +10,7 @@ import random
 from collections.abc import Sequence
 
 from regicide.actions import YIELD, Action
-from regicide.cards import Card, Rank
+from regicide.cards import Card, Rank, Suit
 from regicide.enemy import Enemy
 from regicide.game_state import GameOutcome, GameState
 from regicide.hand import CardNotInHand
@@ -35,14 +35,22 @@ _RANK_NAMES = {
     Rank.JESTER: "Jester",
 }
 
+_SUIT_SYMBOLS = {
+    Suit.HEARTS: "♥",  # ♥
+    Suit.DIAMONDS: "♦",  # ♦
+    Suit.CLUBS: "♣",  # ♣
+    Suit.SPADES: "♠",  # ♠
+}
+
 
 def describe_card(card: Card) -> str:
     if card.is_jester:
         return "Jester"
     name = _RANK_NAMES[card.rank]
+    symbol = _SUIT_SYMBOLS[card.suit]
     if card.is_animal_companion:
-        return f"{name} ({card.suit.value})"
-    return f"{name} of {card.suit.value}"
+        return f"{name} ({symbol})"
+    return f"{name} of {symbol}"
 
 
 class CLIDecisions:
