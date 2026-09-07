@@ -18,7 +18,7 @@ from regicide.play import CardPlay, InvalidPlay
 from regicide.player import InsufficientDiscard, Player
 from regicide.turn_order import IllegalAction
 
-_RANK_NAMES = {
+_RANK_LABELS = {
     Rank.TWO: "2",
     Rank.THREE: "3",
     Rank.FOUR: "4",
@@ -28,11 +28,10 @@ _RANK_NAMES = {
     Rank.EIGHT: "8",
     Rank.NINE: "9",
     Rank.TEN: "10",
-    Rank.JACK: "Jack",
-    Rank.QUEEN: "Queen",
-    Rank.KING: "King",
-    Rank.ANIMAL_COMPANION: "Animal Companion",
-    Rank.JESTER: "Jester",
+    Rank.JACK: "J",
+    Rank.QUEEN: "Q",
+    Rank.KING: "K",
+    Rank.ANIMAL_COMPANION: "A",
 }
 
 _SUIT_SYMBOLS = {
@@ -46,11 +45,7 @@ _SUIT_SYMBOLS = {
 def describe_card(card: Card) -> str:
     if card.is_jester:
         return "Jester"
-    name = _RANK_NAMES[card.rank]
-    symbol = _SUIT_SYMBOLS[card.suit]
-    if card.is_animal_companion:
-        return f"{name} ({symbol})"
-    return f"{name} of {symbol}"
+    return f"{_RANK_LABELS[card.rank]}{_SUIT_SYMBOLS[card.suit]}"
 
 
 class CLIDecisions:
