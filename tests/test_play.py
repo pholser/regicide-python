@@ -128,6 +128,18 @@ class TestJesterRestrictions:
         with pytest.raises(InvalidPlay):
             CardPlay.create(Card.jester(), Card(Rank.TWO, Suit.HEARTS))
 
+    def test_two_jesters_together_rejected(self):
+        with pytest.raises(InvalidPlay):
+            CardPlay.create(Card.jester(), Card.jester())
+
+    def test_jester_embedded_in_a_larger_combo_rejected(self):
+        with pytest.raises(InvalidPlay):
+            CardPlay.create(
+                Card.jester(),
+                Card(Rank.TWO, Suit.HEARTS),
+                Card(Rank.TWO, Suit.CLUBS),
+            )
+
 
 class TestMalformedPlays:
     def test_empty_play_rejected(self):
