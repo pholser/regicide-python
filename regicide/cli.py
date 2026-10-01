@@ -58,9 +58,18 @@ class CLIDecisions:
         self._print_status(state)
         print(f"\n{player.name}'s turn. Your hand:")
         self._print_hand(player)
+        solo = len(state.players) == 1
+        prompt = (
+            "Play cards by number (e.g. '2 4'): "
+            if solo
+            else "Play cards by number (e.g. '2 4'), or 'yield': "
+        )
         while True:
-            raw = input("Play cards by number (e.g. '2 4'), or 'yield': ").strip()
+            raw = input(prompt).strip()
             if raw.lower() in ("yield", "y"):
+                if solo:
+                    print("There's no yielding in solo play. Play a card.")
+                    continue
                 if not state.turn_order.can_yield():
                     print("You can't yield: every other player yielded last turn. Play a card.")
                     continue
@@ -110,6 +119,15 @@ class CLIDecisions:
             if index is None:
                 continue
             return state.players[index - 1]
+
+    def choose_use_jester(self, player: Player, state: GameState) -> bool:
+        jesters = state.solo_jesters
+        assert jesters is not None
+        raw = input(
+            f"\nFlip a Jester to discard your hand and refill to "
+            f"{player.hand.max_size}? ({jesters.remaining} left) [y/N]: "
+        ).strip().lower()
+        return raw in ("y", "yes")
 
     # -- TurnObserver -----------------------------------------------------
 
@@ -164,6 +182,14 @@ class CLIDecisions:
     def on_player_suffered(self, player: Player, amount: int, discarded: tuple[Card, ...]) -> None:
         cards = ", ".join(describe_card(card) for card in discarded)
         print(f"{player.name} discards {cards} to cover {amount} damage.")
+
+    def on_solo_jester_used(
+        self, player: Player, discarded: tuple[Card, ...], drawn: int, remaining: int
+    ) -> None:
+        print(
+            f"\n{player.name} flips a Jester: discards their hand and draws "
+            f"{drawn} new card(s). ({remaining} Jester(s) left.)"
+        )
 
     # -- shared helpers -----------------------------------------------------
 
@@ -248,6 +274,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     print("\n" + "=" * 60)
     if state.outcome is GameOutcome.WON:
         print("Victory! All twelve monarchs have been defeated.")
+        tier = state.solo_victory_tier
+        if tier is not None:
+            print(tier.value)
     else:
         print("Defeat... the corruption has consumed the realm.")
 

@@ -56,13 +56,13 @@ class TestYieldStreak:
         order = TurnOrder(make_players("Alice", "Bob"))
         assert order.can_yield()
 
-    def test_solo_play_can_always_yield(self):
+    def test_solo_play_can_never_yield(self):
         order = TurnOrder(make_players("Alice"))
-        order.yield_turn()
-        order.advance()
-        assert order.can_yield()
-        order.yield_turn()  # would never be legal in multiplayer after a yield
-        assert order.can_yield()
+        assert not order.can_yield()
+        with pytest.raises(IllegalAction):
+            order.yield_turn()
+        order.mark_played()
+        assert not order.can_yield()
 
     def test_two_player_blocks_after_one_yield(self):
         order = TurnOrder(make_players("Alice", "Bob"))

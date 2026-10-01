@@ -14,6 +14,7 @@ from regicide.observer import NULL_OBSERVER, TurnObserver
 from regicide.play import CardPlay
 from regicide.player import Player
 from regicide.setup import max_hand_size
+from regicide.solo import SoloJesters, SoloVictoryTier
 from regicide.turn_order import TurnOrder
 
 if TYPE_CHECKING:
@@ -43,6 +44,7 @@ class GameState:
         castle: CastleDeck,
         enemy: Enemy,
         current_player_index: int = 0,
+        solo_jesters: SoloJesters | None = None,
     ) -> None:
         self.turn_order = TurnOrder(players)
         self.turn_order.current_index = current_player_index
@@ -51,6 +53,7 @@ class GameState:
         self.castle = castle
         self.encounter = Encounter(enemy)
         self.outcome = GameOutcome.IN_PROGRESS
+        self.solo_jesters = solo_jesters
 
     @property
     def players(self) -> list[Player]:
@@ -72,6 +75,12 @@ class GameState:
     def is_over(self) -> bool:
         return self.outcome is not GameOutcome.IN_PROGRESS
 
+    @property
+    def solo_victory_tier(self) -> SoloVictoryTier | None:
+        if self.solo_jesters is None or self.outcome is not GameOutcome.WON:
+            return None
+        return self.solo_jesters.victory_tier
+
     @classmethod
     def new_game(cls, num_players: int, rng: random.Random) -> GameState:
         """Set up a new game per the SETUP section of the rules."""
@@ -91,7 +100,8 @@ class GameState:
         assert first_enemy_card is not None  # the Castle deck always starts with 12 cards
         enemy = Enemy(first_enemy_card)
 
-        return cls(players, tavern, DiscardPile(), castle, enemy)
+        solo_jesters = SoloJesters() if num_players == 1 else None
+        return cls(players, tavern, DiscardPile(), castle, enemy, solo_jesters=solo_jesters)
 
     def apply_red_suit_powers(
         self, play: CardPlay, rng: random.Random, observer: TurnObserver = NULL_OBSERVER
@@ -128,6 +138,30 @@ class GameState:
                 made_progress = True
         return amount - remaining
 
+    def maybe_use_jester(
+        self, decisions: Decisions, player: Player, observer: TurnObserver = NULL_OBSERVER
+    ) -> None:
+        """Solo play only: offer to flip one of the two Jesters set aside at
+        setup instead of shuffling them into the Tavern deck. Discards the
+        whole hand and refills it to max size; unlike playing a Jester from
+        hand, this does not negate enemy immunity."""
+        if self.solo_jesters is None or not self.solo_jesters.available:
+            return
+        if not decisions.choose_use_jester(player, self):
+            return
+        self.solo_jesters.use()
+        discarded = player.hand.cards
+        player.hand.remove_all(discarded)
+        self.discard.add_all(discarded)
+        drawn = 0
+        while not player.hand.is_full:
+            card = self.tavern.draw()
+            if card is None:
+                break
+            player.hand.add(card)
+            drawn += 1
+        observer.on_solo_jester_used(player, discarded, drawn, self.solo_jesters.remaining)
+
     def resolve_enemy_defeat(self) -> None:
         self.encounter.defeat(self.tavern, self.discard)
         next_card = self.castle.draw_next()
@@ -149,6 +183,7 @@ class GameState:
 
         while True:
             player = self.current_player
+            self.maybe_use_jester(decisions, player, observer)
 
             if player.hand.is_empty and not self.turn_order.can_yield():
                 self.outcome = GameOutcome.LOST
@@ -204,6 +239,7 @@ class GameState:
         amount = self.enemy.effective_attack
         if amount <= 0:
             return
+        self.maybe_use_jester(decisions, player, observer)
         if not player.can_survive(amount):
             self.outcome = GameOutcome.LOST
             return

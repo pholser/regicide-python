@@ -34,6 +34,10 @@ class TurnObserver(Protocol):
 
     def on_player_suffered(self, player: Player, amount: int, discarded: tuple[Card, ...]) -> None: ...
 
+    def on_solo_jester_used(
+        self, player: Player, discarded: tuple[Card, ...], drawn: int, remaining: int
+    ) -> None: ...
+
 
 class NullObserver:
     """A TurnObserver that does nothing, for callers that don't care."""
@@ -66,6 +70,11 @@ class NullObserver:
         pass
 
     def on_player_suffered(self, player: Player, amount: int, discarded: tuple[Card, ...]) -> None:
+        pass
+
+    def on_solo_jester_used(
+        self, player: Player, discarded: tuple[Card, ...], drawn: int, remaining: int
+    ) -> None:
         pass
 
 

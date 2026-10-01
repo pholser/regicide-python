@@ -33,7 +33,8 @@ class TurnOrder:
     def can_yield(self) -> bool:
         others = [i for i in range(len(self.players)) if i != self.current_index]
         if not others:
-            return True  # solo play: no one else to have yielded
+            return False  # solo play: "every other player yielded" is vacuously
+            # true with zero other players, so yielding is never allowed
         return not all(self._last_turn_was_yield[i] for i in others)
 
     def yield_turn(self) -> None:

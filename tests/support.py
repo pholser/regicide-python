@@ -22,6 +22,7 @@ class ScriptedDecisions:
         self._actions: list[Action] = []
         self._discards: list[tuple[Card, ...]] = []
         self._next_players: list[Player] = []
+        self._use_jester: list[bool] = []
 
     def script_action(self, action: Action) -> None:
         self._actions.append(action)
@@ -31,6 +32,9 @@ class ScriptedDecisions:
 
     def script_next_player(self, player: Player) -> None:
         self._next_players.append(player)
+
+    def script_use_jester(self, use: bool) -> None:
+        self._use_jester.append(use)
 
     def choose_action(self, player: Player, state: object) -> Action:
         assert self._actions, f"no scripted action left for {player.name}"
@@ -43,6 +47,14 @@ class ScriptedDecisions:
     def choose_next_player(self, chooser: Player, state: object) -> Player:
         assert self._next_players, "no scripted next-player left"
         return self._next_players.pop(0)
+
+    def choose_use_jester(self, player: Player, state: object) -> bool:
+        # Defaults to "no" rather than asserting, since most tests never
+        # exercise this solo-only, rarely-taken branch and shouldn't have to
+        # script a response for every turn just to opt out of it.
+        if self._use_jester:
+            return self._use_jester.pop(0)
+        return False
 
 
 class RecordingObserver:
@@ -81,3 +93,8 @@ class RecordingObserver:
 
     def on_player_suffered(self, player: Player, amount: int, discarded: tuple[Card, ...]) -> None:
         self.events.append(("on_player_suffered", (player, amount, discarded)))
+
+    def on_solo_jester_used(
+        self, player: Player, discarded: tuple[Card, ...], drawn: int, remaining: int
+    ) -> None:
+        self.events.append(("on_solo_jester_used", (player, discarded, drawn, remaining)))

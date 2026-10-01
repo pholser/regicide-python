@@ -27,3 +27,8 @@ class Decisions(Protocol):
     def choose_next_player(self, chooser: Player, state: GameState) -> Player:
         """After a Jester: pick who goes next (any player, including ``chooser``)."""
         ...
+
+    def choose_use_jester(self, player: Player, state: GameState) -> bool:
+        """Solo play only, offered at the start of Step 1 and Step 4 while a
+        Jester remains: flip one to discard the hand and refill it?"""
+        ...

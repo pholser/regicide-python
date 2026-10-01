@@ -10,6 +10,7 @@ from regicide.game_state import GameOutcome, GameState
 from regicide.hand import Hand
 from regicide.play import CardPlay
 from regicide.player import Player
+from regicide.solo import SoloJesters, SoloVictoryTier
 from regicide.turn_order import IllegalAction
 
 from support import RecordingObserver, ScriptedDecisions
@@ -22,6 +23,7 @@ def make_game(
     discard: list[Card] | None = None,
     castle: list[Card] | None = None,
     neutralize_attack: bool = False,
+    solo_jesters: SoloJesters | None = None,
 ) -> GameState:
     players = [
         Player(name=f"P{i + 1}", hand=Hand(max_size=max(8, len(cards)), cards=cards))
@@ -36,6 +38,7 @@ def make_game(
         discard=DiscardPile(discard or []),
         castle=CastleDeck(castle or []),
         enemy=enemy,
+        solo_jesters=solo_jesters,
     )
 
 
@@ -148,6 +151,166 @@ class TestDiamondsPower:
         assert state.tavern.is_empty
 
 
+class TestRedSuitOrdering:
+    def test_hearts_resolves_before_diamonds_in_a_combined_play(self):
+        # Hearts buries 5 cards (attack value 4+1) under the then-empty
+        # Tavern deck; Diamonds then draws 5. If Diamonds resolved first,
+        # the empty Tavern deck would have nothing to supply.
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.SPADES),
+            hands=[[Card(Rank.FOUR, Suit.HEARTS), Card.animal_companion(Suit.DIAMONDS)]],
+            discard=[
+                Card(Rank.TWO, Suit.SPADES),
+                Card(Rank.THREE, Suit.SPADES),
+                Card(Rank.SIX, Suit.CLUBS),
+                Card(Rank.SEVEN, Suit.CLUBS),
+                Card(Rank.EIGHT, Suit.CLUBS),
+                Card(Rank.NINE, Suit.CLUBS),
+            ],
+            neutralize_attack=True,
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(
+            CardPlay.create(Card(Rank.FOUR, Suit.HEARTS), Card.animal_companion(Suit.DIAMONDS))
+        )
+
+        state.play_turn(decisions, random.Random(0))
+
+        assert state.players[0].hand.size == 5
+        assert state.tavern.is_empty
+        assert state.discard.size == 1
+
+
+class TestComboImmunity:
+    def test_immunity_to_one_suit_does_not_block_the_others_in_the_same_combo(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.DIAMONDS),  # immune to Diamonds only
+            hands=[[
+                Card(Rank.THREE, Suit.DIAMONDS),
+                Card(Rank.THREE, Suit.SPADES),
+                Card(Rank.THREE, Suit.CLUBS),
+            ]],
+            neutralize_attack=True,
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(
+            CardPlay.create(
+                Card(Rank.THREE, Suit.DIAMONDS),
+                Card(Rank.THREE, Suit.SPADES),
+                Card(Rank.THREE, Suit.CLUBS),
+            )
+        )
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        assert state.enemy.remaining_health == 20 - 18  # Clubs doubled 9 -> 18, unblocked
+        assert state.enemy.shield == 10 + 9  # pre-set neutralizing shield + Spades, unblocked
+        _, (drawn, blocked) = next((n, a) for n, a in observer.events if n == "on_diamonds")
+        assert drawn == 0
+        assert blocked  # only Diamonds was blocked by the enemy's matching immunity
+
+
+class TestSoloYielding:
+    def test_cannot_yield_in_solo_play(self):
+        state = make_game(hands=[[Card(Rank.TWO, Suit.HEARTS)]])
+        decisions = ScriptedDecisions()
+        decisions.script_action(YIELD)
+        with pytest.raises(IllegalAction):
+            state.play_turn(decisions, random.Random(0))
+
+    def test_forced_loss_when_hand_empties_in_solo_play(self):
+        state = make_game(hands=[[]])
+        state.play_turn(ScriptedDecisions(), random.Random(0))
+        assert state.outcome is GameOutcome.LOST
+
+
+class TestSoloJesters:
+    def test_flip_discards_hand_and_refills_without_negating_immunity(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.CLUBS),  # immune to Clubs
+            hands=[[Card(Rank.TWO, Suit.HEARTS), Card(Rank.THREE, Suit.SPADES)]],
+            tavern=[Card(Rank.FOUR, Suit.DIAMONDS), Card(Rank.FIVE, Suit.DIAMONDS)],
+            solo_jesters=SoloJesters(),
+            neutralize_attack=True,
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_use_jester(True)
+        decisions.script_action(CardPlay.create(Card(Rank.FOUR, Suit.DIAMONDS)))
+        observer = RecordingObserver()
+
+        state.play_turn(decisions, random.Random(0), observer)
+
+        assert state.solo_jesters.remaining == 1
+        assert state.solo_jesters.used == 1
+        assert state.enemy.is_suit_blocked(Suit.CLUBS)  # flipping doesn't negate immunity
+        assert Card(Rank.TWO, Suit.HEARTS) in state.discard.cards
+        assert Card(Rank.THREE, Suit.SPADES) in state.discard.cards
+        _, (player, discarded, drawn, remaining) = next(
+            (n, a) for n, a in observer.events if n == "on_solo_jester_used"
+        )
+        assert drawn == 2
+        assert remaining == 1
+
+    def test_flip_at_step_four_can_rescue_a_player_from_otherwise_fatal_damage(self):
+        state = make_game(
+            enemy_card=Card(Rank.JACK, Suit.HEARTS),  # attack 10, immune to Hearts only
+            hands=[[Card(Rank.TWO, Suit.CLUBS)]],  # hand value 2, nowhere near enough
+            tavern=[Card(Rank.TEN, Suit.SPADES)] * 8,
+            solo_jesters=SoloJesters(),
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_use_jester(False)  # Step 1 offer: declined
+        decisions.script_action(CardPlay.create(Card(Rank.TWO, Suit.CLUBS)))
+        decisions.script_use_jester(True)  # Step 4 offer: flip before suffering damage
+        decisions.script_discard([Card(Rank.TEN, Suit.SPADES)])
+
+        state.play_turn(decisions, random.Random(0))
+
+        assert state.outcome is GameOutcome.IN_PROGRESS
+        assert state.solo_jesters.used == 1
+
+
+class TestSoloVictoryTier:
+    def test_gold_when_no_jesters_used(self):
+        state = make_game(
+            enemy_card=Card(Rank.KING, Suit.DIAMONDS),
+            hands=[[Card(Rank.KING, Suit.CLUBS)]],
+            castle=[],
+            solo_jesters=SoloJesters(),
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_use_jester(False)
+        decisions.script_action(CardPlay.create(Card(Rank.KING, Suit.CLUBS)))
+
+        state.play_turn(decisions, random.Random(0))
+
+        assert state.outcome is GameOutcome.WON
+        assert state.solo_victory_tier is SoloVictoryTier.GOLD
+
+    def test_bronze_when_both_jesters_used(self):
+        jesters = SoloJesters()
+        jesters.use()
+        jesters.use()
+        state = make_game(
+            enemy_card=Card(Rank.KING, Suit.DIAMONDS),
+            hands=[[Card(Rank.KING, Suit.CLUBS)]],
+            castle=[],
+            solo_jesters=jesters,
+        )
+        decisions = ScriptedDecisions()
+        decisions.script_action(CardPlay.create(Card(Rank.KING, Suit.CLUBS)))
+
+        state.play_turn(decisions, random.Random(0))
+
+        assert state.outcome is GameOutcome.WON
+        assert state.solo_victory_tier is SoloVictoryTier.BRONZE
+
+    def test_none_when_not_solo(self):
+        state = make_game(hands=[[Card(Rank.TWO, Suit.HEARTS)], [Card(Rank.TWO, Suit.CLUBS)]])
+        assert state.solo_victory_tier is None
+
+
 class TestClubsAndSpadesPowers:
     def test_clubs_doubles_damage(self):
         state = make_game(
@@ -238,7 +401,7 @@ class TestEnemyDefeatAndWin:
     def test_overkill_defeat_discards_and_continues_same_player_against_next_enemy(self):
         state = make_game(
             enemy_card=Card(Rank.JACK, Suit.DIAMONDS),  # health 20, immune to Diamonds only
-            hands=[[Card(Rank.KING, Suit.CLUBS), Card(Rank.TWO, Suit.HEARTS)]],
+            hands=[[Card(Rank.KING, Suit.CLUBS), Card(Rank.TWO, Suit.HEARTS)], []],
             castle=[Card(Rank.QUEEN, Suit.SPADES)],
         )
         decisions = ScriptedDecisions()
@@ -393,7 +556,7 @@ class TestObserverReporting:
     def test_enemy_defeat_and_next_reveal_are_reported(self):
         state = make_game(
             enemy_card=Card(Rank.JACK, Suit.DIAMONDS),
-            hands=[[Card(Rank.KING, Suit.CLUBS), Card(Rank.TWO, Suit.HEARTS)]],
+            hands=[[Card(Rank.KING, Suit.CLUBS), Card(Rank.TWO, Suit.HEARTS)], []],
             castle=[Card(Rank.QUEEN, Suit.SPADES)],
         )
         decisions = ScriptedDecisions()
