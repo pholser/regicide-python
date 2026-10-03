@@ -45,6 +45,7 @@ class GameState:
         enemy: Enemy,
         current_player_index: int = 0,
         solo_jesters: SoloJesters | None = None,
+        encountered_enemies: list[Card] | None = None,
     ) -> None:
         self.turn_order = TurnOrder(players)
         self.turn_order.current_index = current_player_index
@@ -54,6 +55,7 @@ class GameState:
         self.encounter = Encounter(enemy)
         self.outcome = GameOutcome.IN_PROGRESS
         self.solo_jesters = solo_jesters
+        self.encountered_enemies = list(encountered_enemies or [enemy.card])
 
     @property
     def players(self) -> list[Player]:
@@ -169,6 +171,7 @@ class GameState:
             self.outcome = GameOutcome.WON
         else:
             self.encounter = Encounter(Enemy(next_card))
+            self.encountered_enemies.append(next_card)
 
     def play_turn(
         self, decisions: Decisions, rng: random.Random, observer: TurnObserver = NULL_OBSERVER
