@@ -90,3 +90,50 @@ class TestGameView:
             Enemy(Card(Rank.JACK, Suit.CLUBS)), solo_jesters=SoloJesters(),
         )
         assert GameView.for_player(player, state).solo_jesters_remaining == 2
+
+
+class TestCastleKnowledge:
+    def test_current_enemy_is_in_encounter_history(self):
+        first, _, state = make_state()
+        assert state.encountered_enemies == [Card(Rank.JACK, Suit.DIAMONDS)]
+
+    def test_remaining_suits_exclude_encountered_suits(self):
+        first, _, state = make_state()
+        state.encountered_enemies = [
+            Card(Rank.JACK, Suit.HEARTS),
+            Card(Rank.JACK, Suit.CLUBS),
+            Card(Rank.JACK, Suit.DIAMONDS),
+        ]
+        knowledge = GameView.for_player(first, state).castle_knowledge
+        assert knowledge.remaining_suits == ("Spades",)
+
+    def test_fourth_enemy_is_known_after_three_suits_encountered(self):
+        first, _, state = make_state()
+        state.encountered_enemies = [
+            Card(Rank.JACK, Suit.HEARTS),
+            Card(Rank.JACK, Suit.CLUBS),
+            Card(Rank.JACK, Suit.DIAMONDS),
+        ]
+        assert GameView.for_player(first, state).castle_knowledge.next_enemy == "JS"
+
+    def test_next_enemy_is_unknown_with_two_suits_remaining(self):
+        first, _, state = make_state()
+        state.encountered_enemies = [
+            Card(Rank.JACK, Suit.HEARTS),
+            Card(Rank.JACK, Suit.CLUBS),
+        ]
+        assert GameView.for_player(first, state).castle_knowledge.next_enemy is None
+
+    def test_other_rank_history_does_not_reduce_current_rank_possibilities(self):
+        first, _, state = make_state()
+        state.encountered_enemies = [
+            Card(Rank.JACK, Suit.HEARTS),
+            Card(Rank.JACK, Suit.CLUBS),
+            Card(Rank.JACK, Suit.SPADES),
+            Card(Rank.QUEEN, Suit.HEARTS),
+        ]
+        state.encounter = __import__("regicide.encounter", fromlist=["Encounter"]).Encounter(
+            Enemy(Card(Rank.QUEEN, Suit.HEARTS))
+        )
+        knowledge = GameView.for_player(first, state).castle_knowledge
+        assert set(knowledge.remaining_suits) == {"Diamonds", "Clubs", "Spades"}
