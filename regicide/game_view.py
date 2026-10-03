@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from regicide.cards import Card
+from regicide.cards import Card, Rank, Suit
 from regicide.game_state import GameState
 from regicide.player import Player
 
@@ -25,6 +25,14 @@ class EnemyView:
 
 
 @dataclass(frozen=True)
+class CastleKnowledge:
+    current_rank: str
+    encountered: tuple[str, ...]
+    remaining_suits: tuple[str, ...]
+    next_enemy: str | None
+
+
+@dataclass(frozen=True)
 class GameView:
     current_player: str
     hand: tuple[str, ...]
@@ -34,6 +42,7 @@ class GameView:
     discard: tuple[str, ...]
     players: tuple[PlayerView, ...]
     castle_size: int
+    castle_knowledge: CastleKnowledge
     can_yield: bool
     solo_jesters_remaining: int | None
 
@@ -60,6 +69,7 @@ class GameView:
             discard=tuple(_card_id(card) for card in state.discard.cards),
             players=tuple(PlayerView(p.name, p.hand.size) for p in state.players),
             castle_size=state.castle.size,
+            castle_knowledge=_castle_knowledge(state),
             can_yield=player is state.current_player and state.turn_order.can_yield(),
             solo_jesters_remaining=(
                 state.solo_jesters.remaining if state.solo_jesters is not None else None
@@ -72,3 +82,21 @@ class GameView:
 
 def _card_id(card: Card) -> str:
     return str(card)
+
+
+def _castle_knowledge(state: GameState) -> CastleKnowledge:
+    rank = state.enemy.card.rank
+    encountered = tuple(
+        card for card in state.encountered_enemies if card.rank is rank
+    )
+    encountered_suits = {card.suit for card in encountered}
+    remaining = tuple(suit for suit in Suit if suit not in encountered_suits)
+    next_enemy = None
+    if len(remaining) == 1:
+        next_enemy = _card_id(Card(rank, remaining[0]))
+    return CastleKnowledge(
+        current_rank=rank.value,
+        encountered=tuple(_card_id(card) for card in encountered),
+        remaining_suits=tuple(suit.value for suit in remaining),
+        next_enemy=next_enemy,
+    )
