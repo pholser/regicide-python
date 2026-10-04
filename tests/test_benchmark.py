@@ -2,6 +2,7 @@ import random
 
 from regicide.benchmark import (
     GreedyDecisions,
+    DiamondsTimingDecisions,
     GreedyRescueDecisions,
     ShieldFirstDecisions,
     play_game,
@@ -70,3 +71,30 @@ def test_shield_first_prefers_a_spades_play_over_higher_damage():
     )
     play = ShieldFirstDecisions().choose_action(player, state)
     assert play.cards == (Card(Rank.NINE, Suit.SPADES),)
+
+
+def _state_with_hand(cards):
+    player = Player("P1", Hand(max_size=8, cards=cards))
+    state = GameState(
+        players=[player],
+        tavern=TavernDeck(),
+        discard=DiscardPile(),
+        castle=CastleDeck(),
+        enemy=Enemy(Card(Rank.JACK, Suit.HEARTS)),
+        solo_jesters=SoloJesters(),
+    )
+    return player, state
+
+
+def test_diamonds_timing_holds_diamonds_back_when_hand_is_comfortable():
+    player, state = _state_with_hand([
+        Card(Rank.TEN, Suit.DIAMONDS), Card(Rank.SIX, Suit.CLUBS), Card(Rank.SIX, Suit.HEARTS),
+    ])
+    play = DiamondsTimingDecisions().choose_action(player, state)
+    assert play.cards == (Card(Rank.SIX, Suit.CLUBS),)
+
+
+def test_diamonds_timing_prefers_diamonds_when_hand_is_low():
+    player, state = _state_with_hand([Card(Rank.TEN, Suit.DIAMONDS), Card(Rank.TWO, Suit.CLUBS)])
+    play = DiamondsTimingDecisions().choose_action(player, state)
+    assert play.cards == (Card(Rank.TEN, Suit.DIAMONDS),)

@@ -69,13 +69,30 @@ class ShieldFirstDecisions(GreedyRescueDecisions):
     """Greedy rescue, preferring the highest Spades play while the enemy isn't immune to Spades."""
 
     def choose_action(self, player: Player, state: GameState) -> CardPlay:
+        return self._pick(state, legal_card_plays(player))
+
+    def _pick(self, state: GameState, plays: Sequence[CardPlay]) -> CardPlay:
+        if not state.enemy.is_suit_blocked(Suit.SPADES):
+            shields = [play for play in plays if Suit.SPADES in play.active_suits]
+            if shields:
+                return max(shields, key=lambda play: play.total_attack_value)
+        return max(plays, key=lambda play: play.total_attack_value)
+
+
+class DiamondsTimingDecisions(ShieldFirstDecisions):
+    """Shield-first, but keeps Diamonds plays for when the hand is low.
+
+    With a hand worth at least two of the enemy's hits, Diamonds plays are held back;
+    below that, Diamonds plays are preferred.
+    """
+
+    def choose_action(self, player: Player, state: GameState) -> CardPlay:
         plays = legal_card_plays(player)
-        if state.enemy.is_suit_blocked(Suit.SPADES):
-            return super().choose_action(player, state)
-        shields = [play for play in plays if Suit.SPADES in play.active_suits]
-        if not shields:
-            return super().choose_action(player, state)
-        return max(shields, key=lambda play: play.total_attack_value)
+        diamonds = [play for play in plays if Suit.DIAMONDS in play.active_suits]
+        others = [play for play in plays if Suit.DIAMONDS not in play.active_suits]
+        low = player.hand.total_value < 2 * state.enemy.effective_attack
+        preferred = diamonds if low else others
+        return self._pick(state, preferred or plays)
 
 
 POLICIES: dict[str, Callable[[random.Random], object]] = {
@@ -83,6 +100,7 @@ POLICIES: dict[str, Callable[[random.Random], object]] = {
     "greedy": lambda rng: GreedyDecisions(),
     "greedy_rescue": lambda rng: GreedyRescueDecisions(),
     "shield_first": lambda rng: ShieldFirstDecisions(),
+    "diamonds_timing": lambda rng: DiamondsTimingDecisions(),
 }
 
 
