@@ -1,6 +1,6 @@
 import random
 
-from regicide.benchmark import GreedyDecisions, play_game
+from regicide.benchmark import GreedyDecisions, GreedyRescueDecisions, play_game
 from regicide.cards import Card, Rank, Suit
 from regicide.game_state import GameState
 from regicide.hand import Hand
@@ -36,3 +36,14 @@ def test_greedy_discards_the_cheapest_cover():
         Card(Rank.THREE, Suit.DIAMONDS), Card(Rank.FIVE, Suit.HEARTS),
     ]))
     assert GreedyDecisions().choose_discard(player, 10, None) == (Card(Rank.TEN, Suit.SPADES),)
+
+
+def test_greedy_rescue_flips_only_when_hand_cannot_cover_attack():
+    state = GameState.new_game(1, random.Random(1))
+    rescue = GreedyRescueDecisions()
+    weak = Player("P1", Hand(max_size=8, cards=[Card(Rank.TWO, Suit.CLUBS)]))
+    strong = Player("P1", Hand(max_size=8, cards=[
+        Card(Rank.TEN, Suit.CLUBS), Card(Rank.TEN, Suit.DIAMONDS),
+    ]))
+    assert rescue.choose_use_jester(weak, state)
+    assert not rescue.choose_use_jester(strong, state)

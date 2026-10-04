@@ -58,9 +58,17 @@ class GreedyDecisions:
         return chooser
 
 
+class GreedyRescueDecisions(GreedyDecisions):
+    """Greedy, but flips a Jester whenever the hand can't cover the enemy's attack."""
+
+    def choose_use_jester(self, player: Player, state: GameState) -> bool:
+        return player.hand.total_value < state.enemy.effective_attack
+
+
 POLICIES: dict[str, Callable[[random.Random], object]] = {
     "random": RandomDecisions,
     "greedy": lambda rng: GreedyDecisions(),
+    "greedy_rescue": lambda rng: GreedyRescueDecisions(),
 }
 
 
