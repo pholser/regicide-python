@@ -10,7 +10,7 @@ import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from regicide.cards import Card
+from regicide.cards import Card, Suit
 from regicide.enemy import Enemy
 from regicide.game_state import GameOutcome, GameState
 from regicide.legal_moves import legal_card_plays, legal_discards
@@ -65,10 +65,24 @@ class GreedyRescueDecisions(GreedyDecisions):
         return player.hand.total_value < state.enemy.effective_attack
 
 
+class ShieldFirstDecisions(GreedyRescueDecisions):
+    """Greedy rescue, preferring the highest Spades play while the enemy isn't immune to Spades."""
+
+    def choose_action(self, player: Player, state: GameState) -> CardPlay:
+        plays = legal_card_plays(player)
+        if state.enemy.is_suit_blocked(Suit.SPADES):
+            return super().choose_action(player, state)
+        shields = [play for play in plays if Suit.SPADES in play.active_suits]
+        if not shields:
+            return super().choose_action(player, state)
+        return max(shields, key=lambda play: play.total_attack_value)
+
+
 POLICIES: dict[str, Callable[[random.Random], object]] = {
     "random": RandomDecisions,
     "greedy": lambda rng: GreedyDecisions(),
     "greedy_rescue": lambda rng: GreedyRescueDecisions(),
+    "shield_first": lambda rng: ShieldFirstDecisions(),
 }
 
 

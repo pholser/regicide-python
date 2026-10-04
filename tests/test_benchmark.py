@@ -1,11 +1,19 @@
 import random
 
-from regicide.benchmark import GreedyDecisions, GreedyRescueDecisions, play_game
+from regicide.benchmark import (
+    GreedyDecisions,
+    GreedyRescueDecisions,
+    ShieldFirstDecisions,
+    play_game,
+)
 from regicide.cards import Card, Rank, Suit
+from regicide.decks import CastleDeck, DiscardPile, TavernDeck
+from regicide.enemy import Enemy
 from regicide.game_state import GameState
 from regicide.hand import Hand
 from regicide.legal_moves import legal_card_plays
 from regicide.player import Player
+from regicide.solo import SoloJesters
 
 
 def test_same_seed_gives_same_result():
@@ -47,3 +55,18 @@ def test_greedy_rescue_flips_only_when_hand_cannot_cover_attack():
     ]))
     assert rescue.choose_use_jester(weak, state)
     assert not rescue.choose_use_jester(strong, state)
+
+
+def test_shield_first_prefers_a_spades_play_over_higher_damage():
+    hand = Hand(max_size=8, cards=[Card(Rank.NINE, Suit.SPADES), Card(Rank.TEN, Suit.CLUBS)])
+    player = Player("P1", hand)
+    state = GameState(
+        players=[player],
+        tavern=TavernDeck(),
+        discard=DiscardPile(),
+        castle=CastleDeck(),
+        enemy=Enemy(Card(Rank.JACK, Suit.HEARTS)),
+        solo_jesters=SoloJesters(),
+    )
+    play = ShieldFirstDecisions().choose_action(player, state)
+    assert play.cards == (Card(Rank.NINE, Suit.SPADES),)
