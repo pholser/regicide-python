@@ -4,7 +4,9 @@ from regicide.benchmark import (
     GreedyDecisions,
     DiamondsTimingDecisions,
     GreedyRescueDecisions,
+    LookaheadDecisions,
     ShieldFirstDecisions,
+    SuitAwareDecisions,
     play_game,
 )
 from regicide.cards import Card, Rank, Suit
@@ -92,6 +94,18 @@ def test_diamonds_timing_holds_diamonds_back_when_hand_is_comfortable():
     ])
     play = DiamondsTimingDecisions().choose_action(player, state)
     assert play.cards == (Card(Rank.SIX, Suit.CLUBS),)
+
+
+def test_suit_aware_discard_keeps_spades_over_clubs_at_equal_cost():
+    player, state = _state_with_hand([Card(Rank.FIVE, Suit.SPADES), Card(Rank.FIVE, Suit.CLUBS)])
+    cover = SuitAwareDecisions().choose_discard(player, 5, state)
+    assert cover == (Card(Rank.FIVE, Suit.CLUBS),)
+
+
+def test_lookahead_returns_one_of_the_legal_plays():
+    player, state = _state_with_hand([Card(Rank.TEN, Suit.DIAMONDS), Card(Rank.TWO, Suit.CLUBS)])
+    play = LookaheadDecisions(random.Random(0), rollouts=2).choose_action(player, state)
+    assert play in legal_card_plays(player)
 
 
 def test_diamonds_timing_prefers_diamonds_when_hand_is_low():

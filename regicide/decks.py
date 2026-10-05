@@ -33,6 +33,9 @@ class TavernDeck:
             return None
         return self._cards.pop(0)
 
+    def shuffle(self, rng: random.Random) -> None:
+        rng.shuffle(self._cards)
+
     def place_under(self, cards: Iterable[Card]) -> None:
         """Place cards facedown on the bottom of the deck (the Hearts power)."""
         self._cards.extend(cards)
