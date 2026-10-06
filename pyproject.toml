@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Model classes for Regicide (2nd edition)"
 requires-python = ">=3.11"
 
+[project.optional-dependencies]
+train = ["numpy"]
+
 [project.scripts]
 regicide = "regicide.cli:main"
 
