@@ -13,11 +13,13 @@ from dataclasses import dataclass
 
 from regicide.cards import Card, Suit
 from regicide.enemy import Enemy
+from regicide.features import extract
 from regicide.game_state import GameOutcome, GameState
 from regicide.legal_moves import legal_card_plays, legal_discards
 from regicide.observer import NullObserver
 from regicide.play import CardPlay
 from regicide.player import Player
+from regicide.value_model import LinearValueModel
 
 
 class RandomDecisions:
@@ -190,6 +192,52 @@ class LookaheadDecisions(DiamondsTimingDecisions):
         return wins / self._rollouts, defeated / self._rollouts
 
 
+VALUE_SAMPLES_PER_PLAY = 4
+MAX_ENEMIES = 12
+
+
+class ValueGuidedDecisions(DiamondsTimingDecisions):
+    """Picks the play whose resulting state the learned value model predicts best.
+
+    Each candidate is played out for one turn from a reshuffled Tavern, then the
+    resulting state's features go through the model. A game that ends in the
+    candidate's turn is valued by its outcome: all twelve if won, otherwise the
+    enemies defeated before losing.
+    """
+
+    def __init__(
+        self,
+        rng: random.Random,
+        model: LinearValueModel,
+        samples: int = VALUE_SAMPLES_PER_PLAY,
+    ) -> None:
+        self._rng = rng
+        self._model = model
+        self._samples = samples
+
+    def choose_action(self, player: Player, state: GameState) -> CardPlay:
+        best_play: CardPlay | None = None
+        best_value: float | None = None
+        for play in legal_card_plays(player):
+            value = self._value(state, play)
+            if best_value is None or value > best_value:
+                best_play, best_value = play, value
+        assert best_play is not None
+        return best_play
+
+    def _value(self, state: GameState, play: CardPlay) -> float:
+        total = 0.0
+        for _ in range(self._samples):
+            sim = copy.deepcopy(state)
+            sim.tavern.shuffle(self._rng)
+            sim.play_turn(_ForcedFirstPlay(play, DiamondsTimingDecisions()), self._rng)
+            if sim.is_over:
+                total += MAX_ENEMIES if sim.outcome is GameOutcome.WON else MAX_ENEMIES - 1 - sim.castle.size
+            else:
+                total += self._model.predict(extract(sim.current_player, sim))
+        return total / self._samples
+
+
 POLICIES: dict[str, Callable[[random.Random], object]] = {
     "random": RandomDecisions,
     "greedy": lambda rng: GreedyDecisions(),
@@ -197,6 +245,7 @@ POLICIES: dict[str, Callable[[random.Random], object]] = {
     "shield_first": lambda rng: ShieldFirstDecisions(),
     "diamonds_timing": lambda rng: DiamondsTimingDecisions(),
     "lookahead": lambda rng: LookaheadDecisions(rng),
+    "value_guided": lambda rng: ValueGuidedDecisions(rng, LinearValueModel.load()),
     "lookahead_suit_aware": lambda rng: LookaheadDecisions(
         rng, rollout_policy=SuitAwareDecisions()
     ),

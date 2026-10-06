@@ -7,6 +7,7 @@ from regicide.benchmark import (
     LookaheadDecisions,
     ShieldFirstDecisions,
     SuitAwareDecisions,
+    ValueGuidedDecisions,
     play_game,
 )
 from regicide.cards import Card, Rank, Suit
@@ -17,6 +18,7 @@ from regicide.hand import Hand
 from regicide.legal_moves import legal_card_plays
 from regicide.player import Player
 from regicide.solo import SoloJesters
+from regicide.value_model import LinearValueModel
 
 
 def test_same_seed_gives_same_result():
@@ -112,3 +114,10 @@ def test_diamonds_timing_prefers_diamonds_when_hand_is_low():
     player, state = _state_with_hand([Card(Rank.TEN, Suit.DIAMONDS), Card(Rank.TWO, Suit.CLUBS)])
     play = DiamondsTimingDecisions().choose_action(player, state)
     assert play.cards == (Card(Rank.TEN, Suit.DIAMONDS),)
+
+
+def test_value_guided_returns_one_of_the_legal_plays():
+    player, state = _state_with_hand([Card(Rank.TEN, Suit.DIAMONDS), Card(Rank.TWO, Suit.CLUBS)])
+    model = LinearValueModel(0.0, (0.0,) * 21)
+    play = ValueGuidedDecisions(random.Random(0), model, samples=2).choose_action(player, state)
+    assert play in legal_card_plays(player)

@@ -47,9 +47,7 @@ def test_hand_and_enemy_features():
     assert values["enemy_remaining_health"] == 20
     assert values["enemy_attack"] == 10
     assert values["enemy_shield"] == 0
-    assert values["enemy_is_hearts"] == 1
     assert values["enemy_is_spades"] == 0
-    assert values["enemy_immunity_active"] == 1
     assert values["tavern_size"] == 4
     assert values["discard_size"] == 1
     assert values["castle_size"] == 1

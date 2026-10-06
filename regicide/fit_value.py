@@ -1,6 +1,6 @@
 """Fit a linear value model to collected rows, predicting enemies defeated.
 
-Run with: python -m regicide.fit_value FILE.csv [--holdout-fraction F]
+Run with: python -m regicide.fit_value FILE.csv [--holdout-fraction F] [--save]
 
 Needs numpy (the optional "train" extra). Splits by seed so that rows from one
 game never appear on both sides of the split.
@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from regicide.features import FEATURE_NAMES
+from regicide.value_model import LinearValueModel
 
 LABEL = "enemies_defeated"
 
@@ -60,7 +61,17 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Fit a linear value model.")
     parser.add_argument("path")
     parser.add_argument("--holdout-fraction", type=float, default=0.25)
+    parser.add_argument(
+        "--save", action="store_true", help="fit on all rows and write the default model file"
+    )
     args = parser.parse_args(argv)
+
+    if args.save:
+        data = load(args.path)
+        weights = fit(data.features, data.labels)
+        LinearValueModel(float(weights[0]), tuple(float(w) for w in weights[1:])).save()
+        print(f"saved model fitted on {len(data.labels)} rows")
+        return
 
     data = load(args.path)
     train, test = split_by_seed(data, args.holdout_fraction)
