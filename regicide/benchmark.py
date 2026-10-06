@@ -182,7 +182,7 @@ class LookaheadDecisions(DiamondsTimingDecisions):
             sim = copy.deepcopy(state)
             sim.tavern.shuffle(self._rng)
             decisions = _ForcedFirstPlay(play, self._rollout_policy)
-            counter = _DefeatCounter()
+            counter = DefeatCounter()
             while not sim.is_over:
                 sim.play_turn(decisions, self._rng, counter)
             wins += sim.outcome is GameOutcome.WON
@@ -203,7 +203,7 @@ POLICIES: dict[str, Callable[[random.Random], object]] = {
 }
 
 
-class _DefeatCounter(NullObserver):
+class DefeatCounter(NullObserver):
     def __init__(self) -> None:
         self.enemies_defeated = 0
 
@@ -225,7 +225,7 @@ def play_game(seed: int, policy: str) -> GameResult:
     game_rng = random.Random(seed)
     state = GameState.new_game(1, game_rng)
     decisions = POLICIES[policy](random.Random(seed))
-    counter = _DefeatCounter()
+    counter = DefeatCounter()
     turns = 0
     while not state.is_over:
         state.play_turn(decisions, game_rng, counter)
