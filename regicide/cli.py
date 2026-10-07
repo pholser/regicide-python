@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import argparse
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from regicide.actions import YIELD, Action
+from regicide.benchmark import POLICIES
 from regicide.cards import Card, Rank, Suit
 from regicide.enemy import Enemy
+from regicide.hints import Hint, recommend
+from regicide.value_model import LinearValueModel
 from regicide.game_state import GameOutcome, GameState
 from regicide.hand import CardNotInHand
 from regicide.play import CardPlay, InvalidPlay
@@ -54,18 +57,25 @@ class CLIDecisions:
     (hot-seat).
     """
 
+    def __init__(self, hinter: Callable[[GameState], Hint] | None = None) -> None:
+        self._hinter = hinter
+
     def choose_action(self, player: Player, state: GameState) -> Action:
         self._print_status(state)
         print(f"\n{player.name}'s turn. Your hand:")
         self._print_hand(player)
         solo = len(state.players) == 1
+        hint_text = ", 'hint'" if self._hinter is not None else ""
         prompt = (
-            "Play cards by number (e.g. '2 4'): "
+            f"Play cards by number (e.g. '2 4'){hint_text}: "
             if solo
-            else "Play cards by number (e.g. '2 4'), or 'yield': "
+            else f"Play cards by number (e.g. '2 4'), or 'yield'{hint_text}: "
         )
         while True:
             raw = input(prompt).strip()
+            if raw.lower() == "hint" and self._hinter is not None:
+                self._print_hint(self._hinter(state))
+                continue
             if raw.lower() in ("yield", "y"):
                 if solo:
                     print("There's no yielding in solo play. Play a card.")
@@ -203,6 +213,24 @@ class CLIDecisions:
         )
         print(f"Tavern deck: {state.tavern.size}   Discard pile: {state.discard.size}")
 
+    def _print_hint(self, hint: Hint) -> None:
+        print(
+            f"Hint ({hint.policy_name} policy): play "
+            f"{' + '.join(describe_card(card) for card in hint.play.cards)}. "
+            f"It deals {hint.damage} damage"
+            + (f", defeats {hint.defeats} enemy(ies)" if hint.defeats else "")
+            + (f", shield +{hint.shield}" if hint.shield else "")
+            + "."
+        )
+        if hint.game_over:
+            print("The game ends this turn.")
+        else:
+            print(f"Hand value after the turn: {hint.hand_after}.")
+        print(
+            f"Learned model's estimate of enemies defeated overall: {hint.model_estimate:.1f} of 12. "
+            "(Simulated from a reshuffled Tavern, not the real order.)"
+        )
+
     def _print_hand(self, player: Player) -> None:
         for i, card in enumerate(player.hand.cards, start=1):
             print(f"  {i}: {describe_card(card)}")
@@ -251,18 +279,30 @@ def _prompt_num_players() -> int:
         print("Please enter a number from 1 to 4.")
 
 
+def _make_hinter(policy_name: str | None, seed: int | None) -> Callable[[GameState], Hint]:
+    policy = POLICIES[policy_name](random.Random(seed))
+    hint_rng = random.Random(seed)
+    model = LinearValueModel.load()
+    return lambda state: recommend(policy_name, policy, state, hint_rng, model)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Play Regicide from the command line.")
     parser.add_argument("--players", type=int, choices=[1, 2, 3, 4], help="number of players")
     parser.add_argument("--seed", type=int, help="random seed, for a reproducible game")
+    parser.add_argument(
+        "--hints", choices=sorted(POLICIES), help="offer 'hint' using this policy (solo only)"
+    )
     args = parser.parse_args(argv)
+    if args.hints is not None and args.players not in (None, 1):
+        parser.error("--hints is only available for solo games (--players 1)")
 
     print("Welcome to Regicide!")
     num_players = args.players if args.players is not None else _prompt_num_players()
     rng = random.Random(args.seed)
 
     state = GameState.new_game(num_players, rng)
-    decisions = CLIDecisions()
+    decisions = CLIDecisions(hinter=_make_hinter(args.hints, args.seed)) if args.hints else CLIDecisions()
 
     try:
         while not state.is_over:

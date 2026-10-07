@@ -118,7 +118,7 @@ class SuitAwareDecisions(DiamondsTimingDecisions):
 ROLLOUTS_PER_PLAY = 8
 
 
-class _ForcedFirstPlay:
+class ForcedFirstPlay:
     """Plays a candidate as the first Step 1 action, then defers to a fallback policy.
 
     The Jester offer that precedes Step 1 has already been decided by the real game,
@@ -183,7 +183,7 @@ class LookaheadDecisions(DiamondsTimingDecisions):
         for _ in range(self._rollouts):
             sim = copy.deepcopy(state)
             sim.tavern.shuffle(self._rng)
-            decisions = _ForcedFirstPlay(play, self._rollout_policy)
+            decisions = ForcedFirstPlay(play, self._rollout_policy)
             counter = DefeatCounter()
             while not sim.is_over:
                 sim.play_turn(decisions, self._rng, counter)
@@ -225,17 +225,67 @@ class ValueGuidedDecisions(DiamondsTimingDecisions):
         assert best_play is not None
         return best_play
 
-    def _value(self, state: GameState, play: CardPlay) -> float:
+    def _value(self, state: GameState, play: CardPlay, samples: int | None = None) -> float:
+        total = 0.0
+        count = samples or self._samples
+        for _ in range(count):
+            sim = copy.deepcopy(state)
+            sim.tavern.shuffle(self._rng)
+            sim.play_turn(ForcedFirstPlay(play, DiamondsTimingDecisions()), self._rng)
+            if sim.is_over:
+                total += terminal_value(sim)
+            else:
+                total += self._model.predict(extract(sim.current_player, sim))
+        return total / count
+
+
+def terminal_value(sim: GameState) -> float:
+    return MAX_ENEMIES if sim.outcome is GameOutcome.WON else MAX_ENEMIES - 1 - sim.castle.size
+
+
+TOP_CANDIDATES = 5
+
+
+class TwoTurnDecisions(ValueGuidedDecisions):
+    """Value-guided, but looks one turn further: for the best few plays, scores each
+    by the best second-turn play that follows it."""
+
+    def __init__(
+        self,
+        rng: random.Random,
+        model: LinearValueModel,
+        samples: int = VALUE_SAMPLES_PER_PLAY,
+        top_candidates: int = TOP_CANDIDATES,
+    ) -> None:
+        super().__init__(rng, model, samples)
+        self._top_candidates = top_candidates
+
+    def choose_action(self, player: Player, state: GameState) -> CardPlay:
+        scored = sorted(
+            ((self._value(state, play), play) for play in legal_card_plays(player)),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        finalists = [play for _, play in scored[: self._top_candidates]]
+        return max(finalists, key=lambda play: self._two_turn_value(state, play))
+
+    def _two_turn_value(self, state: GameState, play: CardPlay) -> float:
         total = 0.0
         for _ in range(self._samples):
             sim = copy.deepcopy(state)
             sim.tavern.shuffle(self._rng)
-            sim.play_turn(_ForcedFirstPlay(play, DiamondsTimingDecisions()), self._rng)
+            sim.play_turn(ForcedFirstPlay(play, DiamondsTimingDecisions()), self._rng)
             if sim.is_over:
-                total += MAX_ENEMIES if sim.outcome is GameOutcome.WON else MAX_ENEMIES - 1 - sim.castle.size
+                total += terminal_value(sim)
             else:
-                total += self._model.predict(extract(sim.current_player, sim))
+                total += self._best_next_value(sim)
         return total / self._samples
+
+    def _best_next_value(self, sim: GameState) -> float:
+        follow_ups = legal_card_plays(sim.current_player)
+        if not follow_ups:
+            return self._model.predict(extract(sim.current_player, sim))
+        return max(self._value(sim, play, samples=1) for play in follow_ups)
 
 
 POLICIES: dict[str, Callable[[random.Random], object]] = {
@@ -246,6 +296,7 @@ POLICIES: dict[str, Callable[[random.Random], object]] = {
     "diamonds_timing": lambda rng: DiamondsTimingDecisions(),
     "lookahead": lambda rng: LookaheadDecisions(rng),
     "value_guided": lambda rng: ValueGuidedDecisions(rng, LinearValueModel.load()),
+    "two_turn": lambda rng: TwoTurnDecisions(rng, LinearValueModel.load()),
     "lookahead_suit_aware": lambda rng: LookaheadDecisions(
         rng, rollout_policy=SuitAwareDecisions()
     ),
